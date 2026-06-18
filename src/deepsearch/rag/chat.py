@@ -61,6 +61,18 @@ _AUDIO_HINT = re.compile(
 
 _COUNT_HINT = re.compile(r"\bhow many times\b|\bcount\b|\bnumber of times\b", re.IGNORECASE)
 
+# Library/meta questions ("how many files", "what types", "list my media") are
+# answered deterministically from the asset list — never the LLM, and never with
+# per-fragment sources (no single fragment "answers" a library-wide question).
+_LIBRARY_HINT = re.compile(
+    r"\bhow many (files|assets|videos?|audios?|images?|media|types|kinds)\b"
+    r"|\bwhat (types?|kinds?) of (file|media)"
+    r"|\blist (my|the|all)?\s*(files|media|videos|assets|library)"
+    r"|\bwhat('?s| is| do i have)?\b.*\bin my library\b"
+    r"|\bwhich (assets|files|videos|media)\b",
+    re.IGNORECASE,
+)
+
 
 def _extract_count_term(q: str) -> str | None:
     """Pull the term to count out of a 'how many times … X … mentioned' question."""
@@ -187,6 +199,10 @@ class LibraryRAG:
                 "sources": [],
             }
 
+        # Library composition questions → exact answer from the asset list, no sources.
+        if _LIBRARY_HINT.search(question):
+            return {"kind": "final", "text": self._library_summary(assets), "sources": []}
+
         hits = get_engine().search(question).hits
         dominant = hits[0].asset_id if hits else assets[0]["asset_id"]
         dominant_name = next(
@@ -221,6 +237,33 @@ class LibraryRAG:
             "kind": "generate", "messages": messages,
             "sources": self._select_sources(hits, dominant),
         }
+
+    def _library_summary(self, assets: list[dict]) -> str:
+        """Exact library composition by media type (each asset counted once)."""
+        order = ["video (with audio)", "video", "audio", "image", "text", "other"]
+        groups: dict[str, list[str]] = {}
+        for a in assets:
+            mods = set(a.get("modalities", []))
+            if "video_frames" in mods and "audio_chunks" in mods:
+                kind = "video (with audio)"
+            elif "video_frames" in mods:
+                kind = "video"
+            elif "audio_chunks" in mods:
+                kind = "audio"
+            elif "text_descriptions" in mods:
+                kind = "text"
+            else:
+                kind = "other"
+            groups.setdefault(kind, []).append(a.get("asset_name", "?"))
+        present = [k for k in order if k in groups]
+        lines = [
+            f"You have **{len(assets)}** asset{'s' if len(assets) != 1 else ''} "
+            f"across **{len(present)}** media type{'s' if len(present) != 1 else ''}:"
+        ]
+        for k in present:
+            names = groups[k]
+            lines.append(f"- **{k}**: {len(names)} ({', '.join(names)})")
+        return "\n".join(lines)
 
     def _select_sources(self, hits, dominant: str, limit: int = 5) -> list[Source]:
         """Surface only the moments the answer is grounded in. The answer is built

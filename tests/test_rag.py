@@ -29,3 +29,13 @@ def test_rag_count_zero(stub_env, tmp_path: Path):
     _ingest("totally unrelated content", tmp_path, "a")
     res = get_rag().answer("count the word elephant")
     assert "not mentioned" in res["answer"].lower()
+
+
+def test_rag_library_summary_no_sources(stub_env, tmp_path: Path):
+    from deepsearch.rag import get_rag
+
+    _ingest("first document", tmp_path, "doc1")
+    _ingest("second document", tmp_path, "doc2")
+    res = get_rag().answer("how many files do I have in my library")
+    assert "2" in res["answer"]
+    assert res["sources"] == [], "library/meta questions must not attach fragment sources"
