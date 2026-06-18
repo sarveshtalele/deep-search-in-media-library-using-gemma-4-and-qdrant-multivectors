@@ -1,0 +1,55 @@
+# Default runtime configuration for Deep Search in Media Library.
+# Overridden by environment variables (prefix DEEPSEARCH_) and .env.
+
+models:
+  ollama_host: http://localhost:11434
+  gemma_model: gemma4:e4b        # vision + audio + text + reranking
+  embed_model: nomic-embed-text  # unified text-space embeddings
+  embed_strategy: describe_then_embed  # describe_then_embed | native
+  embed_dim: 768                 # nomic-embed-text dimension
+  request_timeout_s: 120
+  num_predict: 160               # cap tokens per description/transcript (speed)
+  gen_num_predict: 256           # cap tokens for intent/rerank generation
+  chat_num_predict: 512          # cap tokens for RAG chat answers
+  num_ctx: 8192                  # context window for RAG chat (fit full timeline)
+  keep_alive: 30m                # keep model resident in VRAM between calls
+
+qdrant:
+  url: ""                        # empty -> embedded local mode
+  path: ./qdrant_storage
+  collection: media_library
+  distance: Cosine
+  # On-disk scalar quantization keeps embeddings small in unified memory.
+  quantization:
+    enabled: true
+    type: scalar                 # scalar | product | none
+    always_ram: true
+
+ingestion:
+  audio_chunk_seconds: 30
+  audio_overlap_seconds: 5
+  audio_denoise: true            # FFmpeg afftdn noise reduction on extracted audio
+  scene_threshold: 27.0          # PySceneDetect content-detector threshold
+  max_keyframes: 12              # fewer Gemma vision calls = much faster ingest
+  frame_resize: 640              # longest side, px, before sending to Gemma
+  batch_size: 16                 # texts per embedding batch
+
+retrieval:
+  top_k: 10
+  prefetch_limit: 30             # candidates pulled per named vector before fusion
+  fusion: rrf                    # rrf | dbsf | weighted
+  weights:                       # used only when fusion == weighted
+    text_descriptions: 0.5
+    video_frames: 0.3
+    audio_chunks: 0.2
+  intent_llm: false              # false = instant heuristic intent (no LLM call)
+  rerank: false                  # false = skip slow LLM rerank; RRF order is used
+  rerank_top_n: 8
+
+safety:
+  enabled: true
+  max_query_chars: 2000
+
+runtime:
+  use_stub: false
+  log_level: INFO

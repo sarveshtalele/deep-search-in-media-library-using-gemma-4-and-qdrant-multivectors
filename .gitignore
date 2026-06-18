@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# uv
+.uv/
+
+# Project data & artifacts
+data/cache/
+data/media/*
+!data/media/.gitkeep
+qdrant_storage/
+*.log
+
+# Env
+.env
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Next.js frontend
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local editor/agent config
+.claude/
