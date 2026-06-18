@@ -7,6 +7,7 @@ normalised to 16 kHz mono WAV — the canonical input for Gemma 4's audio encode
 
 from __future__ import annotations
 
+import math
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +55,16 @@ def _slice(src_wav: str, start: float, dur: float, dst: Path) -> bool:
         return False
 
 
+def extract_full_wav(media_path: str | Path, cache_dir: str | Path) -> str | None:
+    """Extract the full track to a 16 kHz mono WAV (for Whisper). Returns path or None."""
+    if not ffmpeg_available():
+        return None
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out = cache_dir / f"{Path(media_path).stem}_audio.wav"
+    return str(out) if _extract_wav(str(media_path), out, get_settings().ingestion.audio_denoise) else None
+
+
 def extract_audio_chunks(
     media_path: str | Path,
     cache_dir: str | Path,
@@ -78,7 +89,16 @@ def extract_audio_chunks(
         return []
 
     window = cfg.audio_chunk_seconds
-    hop = max(1, window - cfg.audio_overlap_seconds)
+    overlap = cfg.audio_overlap_seconds
+    hop = max(1, window - overlap)
+    # On very long media, grow the window so the chunk count (each = one Gemma
+    # transcription call) stays bounded instead of scaling linearly with length.
+    est = math.ceil(duration / hop)
+    if est > cfg.max_audio_chunks:
+        hop = math.ceil(duration / cfg.max_audio_chunks)
+        window = hop + overlap
+        log.info(f"Long media ({duration:.0f}s): widening audio window to {window}s "
+                 f"to cap at ~{cfg.max_audio_chunks} chunks.")
     chunks: list[AudioChunk] = []
     start = 0.0
     idx = 0

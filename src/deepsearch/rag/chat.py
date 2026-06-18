@@ -45,8 +45,12 @@ _SYSTEM = (
     "state the number, and list the timestamps.\n"
     "5. If asked about spoken words / audio and the asset is marked (no audio), say it "
     "has no audio track to analyse.\n"
-    "6. Format answers in clean Markdown: a short lead sentence, then bullet points with "
-    "**bold** labels and [HH:MM:SS] timestamps. Be concise."
+    "6. COUNTING PEOPLE/OBJECTS IN A VIDEO: the SAME people/objects usually reappear "
+    "across many timestamps — do NOT add up per-frame counts. Report the number of "
+    "DISTINCT entities, using the LARGEST single-frame count as your basis, and say it "
+    "is approximate (e.g. 'about 3 people'). Never sum the frames.\n"
+    "7. Format answers in clean Markdown: a short lead sentence, then bullet points with "
+    "**bold** labels and [HH:MM:SS] timestamps. Be concise and do not pad."
 )
 
 _AUDIO_HINT = re.compile(
@@ -213,11 +217,23 @@ class LibraryRAG:
             messages.extend(history)
         messages.append({"role": "user", "content": question})
 
-        sources = [
-            Source(h.asset_id, h.asset_name, h.file_path, h.modality, h.start_s, h.end_s)
-            for h in hits[:8]
-        ]
-        return {"kind": "generate", "messages": messages, "sources": sources}
+        return {
+            "kind": "generate", "messages": messages,
+            "sources": self._select_sources(hits, dominant),
+        }
+
+    def _select_sources(self, hits, dominant: str, limit: int = 5) -> list[Source]:
+        """Surface only the moments the answer is grounded in. The answer is built
+        from the dominant asset's timeline, so sources come from THAT asset — never
+        unrelated low-score fragments from other assets the user didn't ask about."""
+        out: list[Source] = []
+        for h in hits:
+            if h.asset_id != dominant:
+                continue
+            out.append(Source(h.asset_id, h.asset_name, h.file_path, h.modality, h.start_s, h.end_s))
+            if len(out) >= limit:
+                break
+        return out
 
     def answer(self, question: str, history: list[dict] | None = None) -> dict:
         prep = self._prepare(question, history)

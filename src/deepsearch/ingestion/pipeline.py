@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from deepsearch.config import PROJECT_ROOT, Settings, get_settings
+from deepsearch.ingestion import asr, media_probe
 from deepsearch.ingestion import audio as audio_mod
-from deepsearch.ingestion import media_probe
 from deepsearch.ingestion import text as text_mod
 from deepsearch.ingestion import video as video_mod
 from deepsearch.logging_utils import get_logger
@@ -35,6 +36,29 @@ ProgressFn = Callable[[dict], None]
 
 def _noop(_event: dict) -> None:
     pass
+
+
+def _overall_fraction(ev: dict) -> float:
+    """Map a stage event to an overall 0..1 progress for the whole pipeline."""
+    s = ev.get("stage")
+    c, t = ev.get("current"), ev.get("total")
+    sub = (c / t) if (c is not None and t) else 0.0
+
+    def band(lo: float, hi: float) -> float:
+        return round(lo + (hi - lo) * sub, 4)
+
+    return {
+        "probe": 0.02,
+        "keyframes": 0.05,
+        "describe_frame": band(0.05, 0.30),
+        "audio": 0.32,
+        "transcribe": band(0.34, 0.80),
+        "captions": 0.81,
+        "embed": band(0.82, 0.97),
+        "multivector": 0.98,
+        "done": 1.0,
+        "error": 1.0,
+    }.get(s, 0.0)
 
 
 @dataclass
@@ -74,7 +98,15 @@ class IngestionPipeline:
         category: str = "uncategorized",
         on_progress: ProgressFn | None = None,
     ) -> IngestResult:
-        progress = on_progress or _noop
+        # Wrap the caller's callback so every event also carries a monotonic
+        # overall fraction (0..1) spanning the WHOLE pipeline — so the UI bar keeps
+        # moving across stages instead of resetting per stage.
+        raw_progress = on_progress or _noop
+
+        def progress(ev: dict) -> None:
+            ev = {**ev, "overall": _overall_fraction(ev)}
+            raw_progress(ev)
+
         path = Path(media_path).resolve()
         if not path.exists():
             return IngestResult("", str(media_path), error="File not found")
@@ -164,6 +196,29 @@ class IngestionPipeline:
         return results
 
     # ------------------------------------------------------------------
+    # Parallel description — Gemma calls are the ingest bottleneck on long
+    # media; Ollama serves them concurrently for ~3x throughput.
+    # ------------------------------------------------------------------
+    def _describe_many(self, items: list, describe, progress, stage: str) -> list[str]:
+        total = len(items)
+        results: list[str] = [""] * total
+        done = 0
+        workers = max(1, self.settings.ingestion.ingest_workers)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(describe, item): i for i, item in enumerate(items)}
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    results[i] = sanitize_generated(fut.result())
+                except Exception as exc:  # pragma: no cover - per-item resilience
+                    log.warning(f"{stage} item {i} failed: {exc!s}")
+                    results[i] = ""
+                done += 1
+                progress({"stage": stage, "current": done, "total": total,
+                          "message": f"Gemma 4 {stage} {done}/{total}"})
+        return results
+
+    # ------------------------------------------------------------------
     # Fragment builders
     # ------------------------------------------------------------------
     def _video_fragments(
@@ -171,34 +226,20 @@ class IngestionPipeline:
     ) -> list[Fragment]:
         progress({"stage": "keyframes", "message": "Detecting scenes & extracting keyframes…"})
         frames = video_mod.extract_keyframes(path, cache_dir, duration)
-        total = len(frames)
-        progress({"stage": "keyframes", "message": f"{total} keyframes extracted"})
-        out = []
-        for i, kf in enumerate(frames, 1):
-            progress(
-                {
-                    "stage": "describe_frame",
-                    "current": i,
-                    "total": total,
-                    "message": f"Gemma 4 describing keyframe {i}/{total} @ {kf.timestamp_s:.1f}s",
-                }
+        progress({"stage": "keyframes", "message": f"{len(frames)} keyframes extracted"})
+        descs = self._describe_many(
+            [kf.image_path for kf in frames], self.model.describe_image, progress, "describe_frame"
+        )
+        return [
+            Fragment(
+                asset_id=asset_id, asset_name=asset_name, file_path=str(path),
+                modality=Modality.VIDEO, text=desc,
+                start_s=kf.timestamp_s, end_s=kf.end_s, duration_s=duration,
+                category=category, thumbnail_path=kf.image_path,
             )
-            desc = sanitize_generated(self.model.describe_image(kf.image_path))
-            out.append(
-                Fragment(
-                    asset_id=asset_id,
-                    asset_name=asset_name,
-                    file_path=str(path),
-                    modality=Modality.VIDEO,
-                    text=desc,
-                    start_s=kf.timestamp_s,
-                    end_s=kf.end_s,
-                    duration_s=duration,
-                    category=category,
-                    thumbnail_path=kf.image_path,
-                )
-            )
-        return out
+            for kf, desc in zip(frames, descs, strict=True)
+            if desc.strip()
+        ]
 
     def _image_fragments(
         self, path, asset_id, asset_name, category, cache_dir, duration, progress
@@ -227,35 +268,55 @@ class IngestionPipeline:
     ) -> list[Fragment]:
         if not media_probe.has_audio_stream(path):
             return []
-        progress({"stage": "audio", "message": "Extracting & slicing audio (30s/5s overlap)…"})
+        # Fast path: one Whisper pass (much faster than per-chunk Gemma on long media).
+        if self.settings.ingestion.audio_backend == "whisper" and asr.available():
+            return self._whisper_fragments(
+                path, asset_id, asset_name, category, cache_dir, duration, progress
+            )
+        # Fallback: per-chunk Gemma audio transcription (parallel).
+        progress({"stage": "audio", "message": "Extracting & slicing audio…"})
         chunks = audio_mod.extract_audio_chunks(path, cache_dir, duration)
-        total = len(chunks)
-        progress({"stage": "audio", "message": f"{total} audio chunks"})
-        out = []
-        for i, ch in enumerate(chunks, 1):
-            progress(
-                {
-                    "stage": "transcribe",
-                    "current": i,
-                    "total": total,
-                    "message": f"Gemma 4 transcribing audio chunk {i}/{total} @ {ch.start_s:.0f}s",
-                }
+        progress({"stage": "audio", "message": f"{len(chunks)} audio chunks"})
+        transcripts = self._describe_many(
+            [ch.audio_path for ch in chunks], self.model.describe_audio, progress, "transcribe"
+        )
+        return [
+            Fragment(
+                asset_id=asset_id, asset_name=asset_name, file_path=str(path),
+                modality=Modality.AUDIO, text=tr,
+                start_s=ch.start_s, end_s=ch.end_s, duration_s=duration, category=category,
             )
-            transcript = sanitize_generated(self.model.describe_audio(ch.audio_path))
-            out.append(
-                Fragment(
-                    asset_id=asset_id,
-                    asset_name=asset_name,
-                    file_path=str(path),
-                    modality=Modality.AUDIO,
-                    text=transcript,
-                    start_s=ch.start_s,
-                    end_s=ch.end_s,
-                    duration_s=duration,
-                    category=category,
-                )
+            for ch, tr in zip(chunks, transcripts, strict=True)
+            if tr.strip()
+        ]
+
+    def _whisper_fragments(
+        self, path, asset_id, asset_name, category, cache_dir, duration, progress
+    ) -> list[Fragment]:
+        progress({"stage": "audio", "message": "Extracting audio for transcription…"})
+        wav = audio_mod.extract_full_wav(path, cache_dir)
+        if not wav:
+            return []
+        progress({"stage": "transcribe", "current": 0, "total": 1,
+                  "message": "Transcribing audio with Whisper…"})
+
+        def on_prog(done: float, total: float) -> None:
+            progress({"stage": "transcribe", "current": int(done), "total": int(total) or 1,
+                      "message": f"Transcribing audio… {int(done)}/{int(total)}s"})
+
+        segs = asr.transcribe(
+            wav, self.settings.models.asr_model,
+            window_s=self.settings.ingestion.audio_chunk_seconds, on_progress=on_prog,
+        )
+        return [
+            Fragment(
+                asset_id=asset_id, asset_name=asset_name, file_path=str(path),
+                modality=Modality.AUDIO, text=sanitize_generated(s.text),
+                start_s=s.start_s, end_s=s.end_s, duration_s=duration, category=category,
             )
-        return out
+            for s in segs
+            if s.text.strip()
+        ]
 
     def _caption_fragments(
         self, path, asset_id, asset_name, category, cache_dir, duration, progress

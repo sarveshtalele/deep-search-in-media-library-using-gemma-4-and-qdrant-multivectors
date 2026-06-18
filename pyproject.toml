@@ -20,6 +20,8 @@ dependencies = [
     # --- Media extraction ---
     "opencv-python>=4.10",
     "scenedetect>=0.6.4",
+    # Fast local audio transcription (one pass vs per-chunk Gemma) for long media
+    "faster-whisper>=1.0",
     "Pillow>=10.4",
     "numpy>=1.26,<2.3",
     # --- Caption / subtitle parsing ---

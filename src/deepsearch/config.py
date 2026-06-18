@@ -32,11 +32,12 @@ class ModelSettings(BaseModel):
     request_timeout_s: int = 120
     # Latency controls: cap generated tokens and keep the model resident in VRAM
     # between calls so it never reloads. Big wins on local Apple Silicon.
-    num_predict: int = 160          # max tokens per description/transcript
+    num_predict: int = 224          # max tokens per description (room for accurate detail)
     gen_num_predict: int = 256      # max tokens for intent/rerank generation
     chat_num_predict: int = 512     # max tokens for RAG chat answers (counting/listing)
     num_ctx: int = 8192             # context window for RAG chat (fit full timeline)
     keep_alive: str = "30m"
+    asr_model: str = "base"         # faster-whisper model: tiny|base|small (speed↔quality)
 
 
 class QuantizationSettings(BaseModel):
@@ -54,13 +55,23 @@ class QdrantSettings(BaseModel):
 
 
 class IngestionSettings(BaseModel):
+    # Audio transcription backend: "whisper" (faster-whisper, one fast pass — much
+    # faster on long media) or "gemma" (per-chunk Gemma audio calls).
+    audio_backend: Literal["whisper", "gemma"] = "whisper"
     audio_chunk_seconds: int = 30
     audio_overlap_seconds: int = 5
     audio_denoise: bool = True       # apply FFmpeg afftdn noise reduction
+    max_audio_chunks: int = 180      # cap chunks on very long media (grows window)
     scene_threshold: float = 27.0
+    # Above this duration, skip full scene-detection (which decodes the entire
+    # video) and sample keyframes uniformly — we only keep `max_keyframes` anyway.
+    scene_detect_max_duration: int = 900  # seconds (15 min)
     max_keyframes: int = 12          # fewer Gemma vision calls = much faster ingest
-    frame_resize: int = 640
+    frame_resize: int = 896          # higher res → more accurate counting/detail
     batch_size: int = 16
+    # Gemma describe/transcribe calls run concurrently — Ollama serves them in
+    # parallel, giving ~3x throughput on long media (the main ingest cost).
+    ingest_workers: int = 4
 
 
 class RetrievalSettings(BaseModel):
@@ -124,6 +135,8 @@ _FLAT_ENV: dict[str, tuple[str, str]] = {
     "DEEPSEARCH_GEMMA_MODEL": ("models", "gemma_model"),
     "DEEPSEARCH_EMBED_MODEL": ("models", "embed_model"),
     "DEEPSEARCH_EMBED_STRATEGY": ("models", "embed_strategy"),
+    "DEEPSEARCH_ASR_MODEL": ("models", "asr_model"),
+    "DEEPSEARCH_AUDIO_BACKEND": ("ingestion", "audio_backend"),
     "DEEPSEARCH_QDRANT_URL": ("qdrant", "url"),
     "DEEPSEARCH_QDRANT_PATH": ("qdrant", "path"),
     "DEEPSEARCH_COLLECTION": ("qdrant", "collection"),
@@ -131,6 +144,8 @@ _FLAT_ENV: dict[str, tuple[str, str]] = {
     "DEEPSEARCH_AUDIO_OVERLAP_SECONDS": ("ingestion", "audio_overlap_seconds"),
     "DEEPSEARCH_SCENE_THRESHOLD": ("ingestion", "scene_threshold"),
     "DEEPSEARCH_MAX_KEYFRAMES": ("ingestion", "max_keyframes"),
+    "DEEPSEARCH_MAX_AUDIO_CHUNKS": ("ingestion", "max_audio_chunks"),
+    "DEEPSEARCH_INGEST_WORKERS": ("ingestion", "ingest_workers"),
     "DEEPSEARCH_TOP_K": ("retrieval", "top_k"),
     "DEEPSEARCH_RERANK": ("retrieval", "rerank"),
     "DEEPSEARCH_USE_STUB": ("runtime", "use_stub"),

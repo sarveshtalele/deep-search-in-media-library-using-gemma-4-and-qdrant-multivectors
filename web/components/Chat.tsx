@@ -11,7 +11,10 @@ type Turn = {
   sources?: AskSource[];
 };
 
-type Upload = { name: string; kind?: string; step: string; pct: number; phase: "up" | "ingest" };
+type Upload = {
+  name: string; kind?: string; step: string; pct: number;
+  phase: "up" | "ingest"; startedAt: number;
+};
 
 const SUGGESTIONS = [
   "Which images did I upload? Describe them.",
@@ -55,7 +58,8 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
 
   const handleFile = async (file: File) => {
     if (disabled) return;
-    setUpload({ name: file.name, step: "Uploading…", pct: 0, phase: "up" });
+    const startedAt = Date.now();
+    setUpload({ name: file.name, step: "Uploading…", pct: 0, phase: "up", startedAt });
     try {
       const up = await api.upload(file);
       if (!up.supported) {
@@ -63,7 +67,10 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
         setUpload(null);
         return;
       }
-      setUpload({ name: up.filename, kind: up.kind, step: "Indexing…", pct: 0, phase: "ingest" });
+      setUpload({
+        name: up.filename, kind: up.kind, step: "Preparing…", pct: 0.02,
+        phase: "ingest", startedAt,
+      });
       await api.ingest(up.filename, "chat", (ev: IngestEvent) => {
         if (ev.stage === "result") {
           const by = ev.by_modality || {};
@@ -81,8 +88,10 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
           setUpload(null);
         } else {
           setUpload((u) => u && {
-            ...u, step: ev.message || u.step,
-            pct: ev.total ? Math.min(1, (ev.current || 0) / ev.total) : u.pct,
+            ...u,
+            step: ev.message || u.step,
+            // Prefer the pipeline-wide overall %, fall back to per-stage ratio.
+            pct: ev.overall ?? (ev.total ? Math.min(1, (ev.current || 0) / ev.total) : u.pct),
           });
         }
       });
@@ -116,20 +125,7 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
 
         {turns.map((t, i) => <Bubble key={i} turn={t} />)}
 
-        {upload && (
-          <div className="animate-fade-up">
-            <div className="glass max-w-[92%] rounded-2xl px-4 py-3 text-sm">
-              <div className="flex items-center gap-2 font-semibold text-ink">
-                <Spinner /> {upload.phase === "up" ? "Uploading" : "Indexing"} {upload.name}
-              </div>
-              <div className="mt-1 text-xs text-ink-muted">{upload.step}</div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-ink/10">
-                <div className="h-full rounded-full bg-clay transition-all"
-                  style={{ width: `${Math.round(upload.pct * 100)}%` }} />
-              </div>
-            </div>
-          </div>
-        )}
+        {upload && <UploadCard upload={upload} />}
 
         <div ref={endRef} />
       </div>
@@ -252,4 +248,42 @@ function SourcePlayer({ source }: { source: AskSource }) {
 
 function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-clay/30 border-t-clay" />;
+}
+
+function fmtElapsed(s: number) {
+  const m = Math.floor(s / 60);
+  return m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+
+function UploadCard({ upload }: { upload: Upload }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, Math.round((now - upload.startedAt) / 1000));
+  const pct = Math.round(Math.min(1, Math.max(0, upload.pct)) * 100);
+  return (
+    <div className="animate-fade-up">
+      <div className="glass max-w-[92%] rounded-2xl px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 font-semibold text-ink">
+          <Spinner />
+          <span className="min-w-0 truncate">
+            {upload.phase === "up" ? "Uploading" : "Indexing"} {upload.name}
+          </span>
+          <span className="ml-auto flex-none font-mono text-xs text-ink-muted">
+            {pct}% · {fmtElapsed(elapsed)}
+          </span>
+        </div>
+        <div className="mt-1 text-xs text-ink-muted">{upload.step}</div>
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-ink/10">
+          <div className="h-full rounded-full bg-clay transition-all duration-500"
+            style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-1.5 text-[11px] text-ink-muted">
+          Long media is transcribed in parallel — this can take a few minutes.
+        </div>
+      </div>
+    </div>
+  );
 }

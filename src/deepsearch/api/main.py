@@ -40,6 +40,9 @@ from deepsearch.vectorstore.store import get_store
 
 log = get_logger(__name__)
 
+# Only one ingest runs at a time (GPU/CPU guard for concurrent long-video uploads).
+_INGEST_SEM = threading.Semaphore(1)
+
 MEDIA_DIR = (PROJECT_ROOT / "data" / "media").resolve()
 CACHE_DIR = (PROJECT_ROOT / "data" / "cache").resolve()
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -161,8 +164,16 @@ def ingest(req: schemas.IngestRequest) -> StreamingResponse:
 
     def worker() -> None:
         try:
-            pipe = IngestionPipeline()
-            result = pipe.ingest_file(path, req.category, on_progress=events.put)
+            # Serialize ingests — only one heavy media job touches the GPU at a
+            # time, so uploading several long videos queues instead of thrashing.
+            if not _INGEST_SEM.acquire(blocking=False):
+                events.put({"stage": "audio", "message": "Queued — another file is indexing…"})
+                _INGEST_SEM.acquire()
+            try:
+                pipe = IngestionPipeline()
+                result = pipe.ingest_file(path, req.category, on_progress=events.put)
+            finally:
+                _INGEST_SEM.release()
             events.put({
                 "stage": "result",
                 "error": result.error,

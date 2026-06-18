@@ -38,9 +38,16 @@ log = get_logger(__name__)
 # Prompt templates (kept here so they are easy to audit / tune)
 # ----------------------------------------------------------------------------
 _FRAME_PROMPT = (
-    "You are indexing a video keyframe for search. Describe, in 2-3 dense "
-    "sentences, the visible objects, people, actions, on-screen text, charts "
-    "and setting. Be concrete and literal. Do not speculate about audio."
+    "You are indexing ONE video keyframe for search. Describe only what is clearly "
+    "visible, in 2-3 dense sentences: people, their actions, visible objects, "
+    "on-screen text/charts, and setting.\n"
+    "Accuracy rules:\n"
+    "- Count people precisely: state the exact number of DISTINCT people you can "
+    "actually see (e.g. 'three people'). If you cannot tell, say 'approximately N'.\n"
+    "- Do NOT invent people, objects or text that are not clearly present, and do "
+    "not exaggerate counts.\n"
+    "- Be literal and concrete. Do not speculate about audio or about what happens "
+    "off-screen."
 )
 _AUDIO_PROMPT = (
     "You are indexing an audio segment for search. Transcribe any speech "
@@ -49,14 +56,14 @@ _AUDIO_PROMPT = (
 )
 _INTENT_PROMPT = (
     "Classify the user's media-search intent and propose retrieval weights.\n"
-    "Return STRICT JSON: {{\"intent\": one of [visual, spoken, conceptual, mixed], "
-    "\"weights\": {{\"text_descriptions\": float, \"video_frames\": float, "
-    "\"audio_chunks\": float}}}} with weights summing to 1.0.\n"
+    'Return STRICT JSON: {{"intent": one of [visual, spoken, conceptual, mixed], '
+    '"weights": {{"text_descriptions": float, "video_frames": float, '
+    '"audio_chunks": float}}}} with weights summing to 1.0.\n'
     "Query: {query}"
 )
 _RERANK_PROMPT = (
     "Rank the candidate media fragments by how well they answer the query. "
-    "Return STRICT JSON: {{\"order\": [list of candidate ids, best first]}}.\n"
+    'Return STRICT JSON: {{"order": [list of candidate ids, best first]}}.\n'
     "Query: {query}\n\nCandidates:\n{candidates}"
 )
 
@@ -92,7 +99,9 @@ class GemmaModelClient:
     def _detect_dim(self) -> None:
         """Probe the real embedding dimensionality once at startup."""
         try:
-            resp = self._client.embeddings(model=self.embed_model_name, prompt="dimension probe")
+            resp = self._invoke(
+                self._client.embeddings, model=self.embed_model_name, prompt="dimension probe"
+            )
             self.dim = len(resp["embedding"])
         except Exception as exc:  # pragma: no cover - env dependent
             log.warning(
@@ -117,15 +126,27 @@ class GemmaModelClient:
             self._client.list()  # connectivity probe
             return _Backend("ollama")
         except Exception as exc:  # pragma: no cover - depends on local env
-            self.unavailable_reason = (
-                f"Ollama not reachable at {self.settings.models.ollama_host} ({exc!s})."
-            )
+            self.unavailable_reason = f"Ollama not reachable at {self.settings.models.ollama_host} ({exc!s})."
             log.warning(f"{self.unavailable_reason} Falling back to deterministic stub.")
             return _Backend("stub")
 
     @property
     def is_stub(self) -> bool:
         return self.backend.name == "stub"
+
+    def _invoke(self, fn, *args, **kwargs):
+        """Call an Ollama client method with bounded retry + exponential backoff —
+        absorbs transient overload / rate-limit / connection blips during the heavy
+        parallel ingest of long media."""
+        from tenacity import Retrying, stop_after_attempt, wait_exponential
+
+        for attempt in Retrying(
+            stop=stop_after_attempt(4),
+            wait=wait_exponential(multiplier=1, min=1, max=12),
+            reraise=True,
+        ):
+            with attempt:
+                return fn(*args, **kwargs)
 
     # ==================================================================
     # Health
@@ -165,15 +186,18 @@ class GemmaModelClient:
             out["ok"] = out["gemma_present"] and out["embed_present"]
             if not out["ok"]:
                 missing = [
-                    m for m, present in (
+                    m
+                    for m, present in (
                         (cfg.gemma_model, out["gemma_present"]),
                         (cfg.embed_model, out["embed_present"]),
-                    ) if not present
+                    )
+                    if not present
                 ]
                 out["detail"] = (
                     "Ollama is running but missing model(s): "
                     + ", ".join(missing)
-                    + ". Pull with: " + " && ".join(f"ollama pull {m}" for m in missing)
+                    + ". Pull with: "
+                    + " && ".join(f"ollama pull {m}" for m in missing)
                 )
         except Exception as exc:
             out["detail"] = (
@@ -196,7 +220,9 @@ class GemmaModelClient:
         for text in texts:
             # Never send an empty prompt — some embedders return a 0-length vector.
             prompt = text if text and text.strip() else " "
-            resp = self._client.embeddings(model=self.embed_model_name, prompt=prompt, keep_alive=ka)
+            resp = self._invoke(
+                self._client.embeddings, model=self.embed_model_name, prompt=prompt, keep_alive=ka
+            )
             vec = list(resp.get("embedding") or [])
             if len(vec) != self.dim:
                 raise ValueError(
@@ -222,7 +248,8 @@ class GemmaModelClient:
         if self.is_stub:
             return f"[stub frame description for {Path(image_path).name}]"
         b64 = _b64_file(image_path)
-        resp = self._client.generate(
+        resp = self._invoke(
+            self._client.generate,
             model=self.settings.models.gemma_model,
             prompt=_FRAME_PROMPT,
             images=[b64],
@@ -239,7 +266,8 @@ class GemmaModelClient:
         b64 = _b64_file(audio_path)
         # Ollama passes non-image media through the same `images` channel for
         # Gemma 4's unified multimodal encoder.
-        resp = self._client.generate(
+        resp = self._invoke(
+            self._client.generate,
             model=self.settings.models.gemma_model,
             prompt=_AUDIO_PROMPT,
             images=[b64],
@@ -255,7 +283,8 @@ class GemmaModelClient:
     def generate(self, prompt: str, images: list[str] | None = None) -> str:
         if self.is_stub:
             return f"[stub generation] {prompt[:120]}"
-        resp = self._client.generate(
+        resp = self._invoke(
+            self._client.generate,
             model=self.settings.models.gemma_model,
             prompt=prompt,
             images=images or None,
@@ -270,7 +299,8 @@ class GemmaModelClient:
             last = messages[-1]["content"] if messages else ""
             return f"[stub chat reply grounded in context] re: {last[:120]}"
         m = self.settings.models
-        resp = self._client.chat(
+        resp = self._invoke(
+            self._client.chat,
             model=m.gemma_model,
             messages=messages,
             # Larger context + answer budget + low temperature for grounded RAG.

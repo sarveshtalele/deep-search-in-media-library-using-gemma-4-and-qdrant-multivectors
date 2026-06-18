@@ -8,11 +8,12 @@ models:
   embed_strategy: describe_then_embed  # describe_then_embed | native
   embed_dim: 768                 # nomic-embed-text dimension
   request_timeout_s: 120
-  num_predict: 160               # cap tokens per description/transcript (speed)
+  num_predict: 224               # cap tokens per description (room for accurate detail)
   gen_num_predict: 256           # cap tokens for intent/rerank generation
   chat_num_predict: 512          # cap tokens for RAG chat answers
   num_ctx: 8192                  # context window for RAG chat (fit full timeline)
   keep_alive: 30m                # keep model resident in VRAM between calls
+  asr_model: base                # faster-whisper model: tiny | base | small
 
 qdrant:
   url: ""                        # empty -> embedded local mode
@@ -26,13 +27,17 @@ qdrant:
     always_ram: true
 
 ingestion:
+  audio_backend: whisper         # whisper (fast, one pass) | gemma (per-chunk)
   audio_chunk_seconds: 30
   audio_overlap_seconds: 5
   audio_denoise: true            # FFmpeg afftdn noise reduction on extracted audio
+  max_audio_chunks: 180          # cap chunks on very long media (grows window size)
   scene_threshold: 27.0          # PySceneDetect content-detector threshold
+  scene_detect_max_duration: 900 # skip full scene-decode above 15min (uniform sample)
   max_keyframes: 12              # fewer Gemma vision calls = much faster ingest
-  frame_resize: 640              # longest side, px, before sending to Gemma
+  frame_resize: 896              # longest side px — higher res = more accurate counting
   batch_size: 16                 # texts per embedding batch
+  ingest_workers: 4              # concurrent Gemma describe/transcribe calls (~3x faster)
 
 retrieval:
   top_k: 10

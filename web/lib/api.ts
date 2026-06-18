@@ -75,6 +75,7 @@ export type IngestEvent = {
   message?: string;
   current?: number;
   total?: number;
+  overall?: number; // 0..1 across the whole pipeline
   // final "result" event:
   error?: string | null;
   fragments?: number;

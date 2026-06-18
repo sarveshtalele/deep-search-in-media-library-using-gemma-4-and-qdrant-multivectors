@@ -60,12 +60,20 @@ def extract_keyframes(
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    spans = _scene_boundaries(video_path, cfg.scene_threshold)
-    if not spans:
-        # ~1 keyframe per 5s of footage (each frame is one Gemma vision call),
-        # capped at max_keyframes — avoids over-sampling short/static clips.
-        n = max(1, min(cfg.max_keyframes, round((duration_s or 5) / 5)))
-        spans = _uniform_spans(duration_s, n)
+    # Scene detection decodes the whole video — far too slow for long media, where
+    # we only keep `max_keyframes` frames anyway. Skip it past a duration limit.
+    if duration_s and duration_s > cfg.scene_detect_max_duration:
+        log.info(
+            f"Long video ({duration_s:.0f}s) > {cfg.scene_detect_max_duration}s: "
+            f"sampling {cfg.max_keyframes} keyframes uniformly (skipping scene detection)."
+        )
+        spans = _uniform_spans(duration_s, cfg.max_keyframes)
+    else:
+        spans = _scene_boundaries(video_path, cfg.scene_threshold)
+        if not spans:
+            # ~1 keyframe per 5s of footage, capped at max_keyframes.
+            n = max(1, min(cfg.max_keyframes, round((duration_s or 5) / 5)))
+            spans = _uniform_spans(duration_s, n)
 
     # Cap to max_keyframes, evenly subsampling if a clip has very many scenes.
     if len(spans) > cfg.max_keyframes:
