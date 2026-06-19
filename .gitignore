@@ -42,3 +42,8 @@ htmlcov/
 
 # Local editor/agent config
 .claude/
+
+# E2E walkthrough artifacts (screenshots + videos are large)
+e2e/node_modules/
+docs/e2e/artifacts/
+docs/e2e/shots/
