@@ -43,7 +43,8 @@ htmlcov/
 # Local editor/agent config
 .claude/
 
-# E2E walkthrough artifacts (screenshots + videos are large)
+# E2E — ignore deps + per-run artifacts, but keep the walkthrough deliverables
+# (docs/e2e/shots, walkthrough.mp4/.webm) tracked as documentation.
 e2e/node_modules/
+e2e/test-results/
 docs/e2e/artifacts/
-docs/e2e/shots/

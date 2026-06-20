@@ -1,0 +1,13 @@
+{
+  "name": "deepsearch-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Playwright end-to-end walkthrough — screenshots + video of the Deep Search app.",
+  "scripts": {
+    "test": "playwright test",
+    "walkthrough": "playwright test walkthrough.spec.ts --reporter=list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
