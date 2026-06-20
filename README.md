@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%20|%203.12-3776AB)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-6366f1)](LICENSE)
 [![Local](https://img.shields.io/badge/100%25-local%20&%20private-8b5cf6)](#privacy)
+[![Walkthrough](https://img.shields.io/badge/📺_E2E-Walkthrough-C96442)](docs/E2E_WALKTHROUGH.md)
 
 *Find the exact second a moment happens — by describing it in plain English.*
 
