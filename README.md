@@ -131,19 +131,23 @@ export DEEPSEARCH_QDRANT_URL=http://localhost:6333
 
 ```
 src/deepsearch/
-├── config.py            layered settings
-├── models/              Gemma client (+ health check) + safety filter
-├── ingestion/           probe · video · audio · text · pipeline (progress events)
-├── vectorstore/         Qdrant schema + store
-├── query/               intent · fusion · rerank · engine
-├── rag/                 temporal RAG chat
-├── api/                 FastAPI backend (health · upload · ingest SSE · search · chat · media)
-└── cli.py               typer CLI
-web/                     Next.js frontend (Apple glass · cream/amber · upload-first)
-├── app/                 layout · page · globals.css
-├── components/          HealthBanner · Ingest · Search · ResultCard · MediaPlayer · RagChat
-└── lib/api.ts           typed API client (+ SSE)
-docs/                    ARCHITECTURE (design · why · gaps · coverage) · HOW_IT_WORKS (ops · usage)
+├── config.py            layered settings (YAML + env)
+├── logging_utils.py     loguru + in-memory ring buffer
+├── models/              gemma (client + health + retry) · safety (filter + sanitizer)
+├── ingestion/           media_probe · video · audio · asr (whisper) · text · pipeline
+├── vectorstore/         schema · store (named + MaxSim multivectors)
+├── query/               intent · fusion · rerank · search engine
+├── rag/                 chat — library-wide grounded RAG (deterministic counts/summary)
+├── api/                 FastAPI (health · upload · ingest SSE · ask stream · search · media · delete)
+└── cli.py               typer CLI (ingest · search · stats · reset · serve · health)
+web/                     Next.js frontend (Apple-glass chat · cream/amber)
+├── app/                 layout · page (sidebar shell) · globals.css
+├── components/          Chat · Sidebar · Search · Library · ResultCard · MediaPlayer
+└── lib/api.ts           typed API client (+ SSE streaming)
+e2e/                     Playwright walkthrough (spec · config) → screenshots + video
+config/                  default.yaml
+scripts/                 ingest.py · run_app.py
+docs/                    ARCHITECTURE · HOW_IT_WORKS · E2E_WALKTHROUGH
 tests/                   stub-backed unit + e2e suite
 ```
 
