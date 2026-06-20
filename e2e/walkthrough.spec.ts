@@ -57,7 +57,7 @@ test("Deep Search — end-to-end walkthrough", async ({ page }) => {
   await dwell(page);
   await page.screenshot({ path: `${SHOTS}/02-sidebar-nav.png` });
 
-  // ── 3) Attach media (📎): upload + auto-index with live progress ───────
+  // ── 3) Attach media (the paperclip button): upload + auto-index with live progress ───────
   await page.setInputFiles('input[type="file"]', SAMPLE);
   await expect(page.getByText(/Uploading|Indexing|Preparing|Transcribing/).first()).toBeVisible({ timeout: 20_000 });
   await dwell(page, 1500);
@@ -100,7 +100,7 @@ test("Deep Search — end-to-end walkthrough", async ({ page }) => {
   // ── 8) Run a search → WAIT for results to render ───────────────────────
   await page.locator('input[placeholder*="Find the chart"]').fill("geometric shapes red square");
   await dwell(page, 800);
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.locator("main").getByRole("button", { name: "Search", exact: true }).click();
   // wait for actual output: a result card or the "no matches" message
   await page.locator('.ds-card, :text("No matches")').first().waitFor({ timeout: 60_000 }).catch(() => {});
   await dwell(page);

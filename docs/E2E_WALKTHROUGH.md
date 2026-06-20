@@ -33,7 +33,7 @@ per-asset list with delete-on-hover.
 ![Sidebar](e2e/shots/02-sidebar-nav.png)
 
 ## 3. Attach media → auto-index (live progress)
-Clicking **📎** uploads a file (here a sample image) straight into the library. Ingestion runs
+Clicking the paperclip button uploads a file (here a sample image) straight into the library. Ingestion runs
 immediately with a live card showing the **overall %**, the current step, and an elapsed timer.
 Internally: probe → keyframes/whisper → Gemma 4 description → embed → Qdrant upsert.
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, type AskSource, type IngestEvent } from "@/lib/api";
+import { IconAttach, IconChat, ModalityIcon } from "./icons";
 
 type Turn = {
   role: "user" | "assistant" | "system";
@@ -52,7 +53,7 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
         (src) => patchLast((t) => ({ ...t, sources: src })),
       );
     } catch (e) {
-      patchLast((t) => ({ ...t, content: (t.content || "") + `\n\n⚠️ ${(e as Error).message}` }));
+      patchLast((t) => ({ ...t, content: (t.content || "") + `\n\nError: ${(e as Error).message}` }));
     } finally { setBusy(false); }
   };
 
@@ -63,7 +64,7 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
     try {
       const up = await api.upload(file);
       if (!up.supported) {
-        setTurns((t) => [...t, { role: "system", content: `⚠️ ${file.name}: unsupported file type.` }]);
+        setTurns((t) => [...t, { role: "system", content: `${file.name}: unsupported file type.` }]);
         setUpload(null);
         return;
       }
@@ -78,13 +79,13 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
           setTurns((t) => [...t, {
             role: "system",
             content: ev.error
-              ? `⚠️ ${up.filename}: ${ev.error}`
-              : `✅ Added **${up.filename}** to your library (${parts}). Ask me anything about it.`,
+              ? `Failed — ${up.filename}: ${ev.error}`
+              : `Added **${up.filename}** to your library (${parts}). Ask me anything about it.`,
           }]);
           setUpload(null);
           onUploaded();
         } else if (ev.stage === "error") {
-          setTurns((t) => [...t, { role: "system", content: `⚠️ ${up.filename}: ${ev.message}` }]);
+          setTurns((t) => [...t, { role: "system", content: `Failed — ${up.filename}: ${ev.message}` }]);
           setUpload(null);
         } else {
           setUpload((u) => u && {
@@ -96,7 +97,7 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
         }
       });
     } catch (e) {
-      setTurns((t) => [...t, { role: "system", content: `⚠️ Upload failed: ${(e as Error).message}` }]);
+      setTurns((t) => [...t, { role: "system", content: `Upload failed: ${(e as Error).message}` }]);
       setUpload(null);
     }
   };
@@ -104,7 +105,8 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
   return (
     <div className="glass-strong flex h-[calc(100vh-3rem)] flex-col p-5 sm:p-6">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-lg font-bold">💬 Ask your library</span>
+        <IconChat size={20} className="text-clay" />
+        <span className="text-lg font-bold">Ask your library</span>
         <span className="text-xs text-ink-muted">grounded in your indexed media</span>
       </div>
 
@@ -112,8 +114,9 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
         {turns.length === 0 && !upload && (
           <div className="animate-fade-up">
             <p className="text-sm text-ink-muted">
-              Attach media with <b>📎</b> (it’s saved to your library and indexed automatically),
-              then ask anything — answers are grounded in your media, with the exact moments as sources.
+              Attach media with the paperclip button (it’s saved to your library and indexed
+              automatically), then ask anything — answers are grounded in your media, with the exact
+              moments as sources.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
@@ -133,11 +136,11 @@ export function Chat({ disabled, onUploaded }: { disabled: boolean; onUploaded: 
       {/* Composer with attach */}
       <div className="mt-4 flex items-center gap-2">
         <button
-          className="btn-ghost h-11 w-11 flex-none rounded-full p-0 text-lg"
+          className="btn-ghost flex h-11 w-11 flex-none items-center justify-center rounded-full p-0"
           title="Attach media (auto-saved to library)"
           disabled={disabled || !!upload}
           onClick={() => fileRef.current?.click()}
-        >📎</button>
+        ><IconAttach size={18} /></button>
         <input ref={fileRef} type="file" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.currentTarget.value = ""; }} />
         <input
@@ -204,14 +207,14 @@ function Sources({ sources }: { sources: AskSource[] }) {
   return (
     <div className="mt-2">
       <button onClick={() => setOpen((o) => !o)} className="text-xs font-semibold text-clay-600 hover:underline">
-        {open ? "▾ Hide sources" : `▸ ${sources.length} source${sources.length > 1 ? "s" : ""}`}
+        {open ? "Hide sources" : `${sources.length} source${sources.length > 1 ? "s" : ""}`}
       </button>
       {open && (
         <div className="mt-2 flex flex-wrap gap-2">
           {sources.map((s, i) => (
             <button key={i} onClick={() => setPlay(s)}
-              className="rounded-full border border-line-strong bg-white/70 px-3 py-1 text-xs text-ink hover:border-clay hover:text-clay-600">
-              {s.modality === "audio_chunks" ? "🎧" : s.modality === "text_descriptions" ? "📝" : "🎬"}{" "}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-white/70 px-3 py-1 text-xs text-ink hover:border-clay hover:text-clay-600">
+              <ModalityIcon modality={s.modality} size={13} />
               {s.asset_name} <span className="font-mono text-amber-700">{s.timestamp_label}</span>
             </button>
           ))}

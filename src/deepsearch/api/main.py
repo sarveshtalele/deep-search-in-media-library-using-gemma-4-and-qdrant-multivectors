@@ -277,7 +277,7 @@ def ask(req: schemas.AskRequest) -> schemas.AskResponse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Media serving (range-enabled FileResponse → video/audio seeking)
+# Media serving (range-enabled FileResponse -> video/audio seeking)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/api/media")
 def media(path: str) -> FileResponse:

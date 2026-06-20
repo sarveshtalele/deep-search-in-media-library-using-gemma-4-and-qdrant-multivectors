@@ -195,11 +195,11 @@ class LibraryRAG:
         if not assets:
             return {
                 "kind": "final",
-                "text": "Your library is empty — attach a file in chat (📎) to index it first.",
+                "text": "Your library is empty — attach a file in chat to index it first.",
                 "sources": [],
             }
 
-        # Library composition questions → exact answer from the asset list, no sources.
+        # Library composition questions -> exact answer from the asset list, no sources.
         if _LIBRARY_HINT.search(question):
             return {"kind": "final", "text": self._library_summary(assets), "sources": []}
 

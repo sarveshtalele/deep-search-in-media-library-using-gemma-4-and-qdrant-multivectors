@@ -1,6 +1,7 @@
 "use client";
 
 import type { Hit } from "@/lib/api";
+import { ModalityIcon } from "./icons";
 
 const MOD_LABEL: Record<string, string> = {
   video_frames: "video", audio_chunks: "audio", text_descriptions: "text",
@@ -23,8 +24,8 @@ export function ResultCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={hit.thumbnail_url} alt="" className="h-16 w-24 flex-none rounded-xl object-cover" />
         ) : (
-          <div className="flex h-16 w-24 flex-none items-center justify-center rounded-xl bg-amber-soft text-2xl">
-            {hit.modality === "audio_chunks" ? "🎧" : "📝"}
+          <div className="flex h-16 w-24 flex-none items-center justify-center rounded-xl bg-amber-soft text-clay-600">
+            <ModalityIcon modality={hit.modality} size={24} />
           </div>
         )}
         <div className="min-w-0 flex-1">

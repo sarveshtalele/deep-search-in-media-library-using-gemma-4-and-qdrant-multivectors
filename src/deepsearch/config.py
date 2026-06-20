@@ -37,7 +37,7 @@ class ModelSettings(BaseModel):
     chat_num_predict: int = 512     # max tokens for RAG chat answers (counting/listing)
     num_ctx: int = 8192             # context window for RAG chat (fit full timeline)
     keep_alive: str = "30m"
-    asr_model: str = "base"         # faster-whisper model: tiny|base|small (speed↔quality)
+    asr_model: str = "base"         # faster-whisper model: tiny|base|small (speed/quality)
 
 
 class QuantizationSettings(BaseModel):
@@ -67,7 +67,7 @@ class IngestionSettings(BaseModel):
     # video) and sample keyframes uniformly — we only keep `max_keyframes` anyway.
     scene_detect_max_duration: int = 900  # seconds (15 min)
     max_keyframes: int = 12          # fewer Gemma vision calls = much faster ingest
-    frame_resize: int = 896          # higher res → more accurate counting/detail
+    frame_resize: int = 896          # higher res -> more accurate counting/detail
     batch_size: int = 16
     # Gemma describe/transcribe calls run concurrently — Ollama serves them in
     # parallel, giving ~3x throughput on long media (the main ingest cost).

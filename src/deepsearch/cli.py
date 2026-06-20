@@ -30,10 +30,10 @@ def ingest(
     total = 0
     for r in results:
         if r.error:
-            typer.secho(f"  ✗ {r.asset_name}: {r.error}", fg="red")
+            typer.secho(f"  FAIL {r.asset_name}: {r.error}", fg="red")
         else:
             total += r.fragments
-            typer.secho(f"  ✓ {r.asset_name}: {r.fragments} fragments {r.by_modality}", fg="green")
+            typer.secho(f"  OK {r.asset_name}: {r.fragments} fragments {r.by_modality}", fg="green")
     typer.secho(f"Done. {total} fragments indexed.", fg="cyan", bold=True)
 
 

@@ -124,14 +124,14 @@ export function Search({ disabled }: { disabled: boolean }) {
         )}
         {resp?.blocked && (
           <div className="mt-4 rounded-2xl border border-clay/40 bg-clay/5 p-4 text-sm text-clay-700">
-            🛑 Query blocked: {resp.message}
+            Query blocked: {resp.message}
           </div>
         )}
 
         <div className="mt-4 space-y-3">
           {busy && <Skeleton />}
           {!busy && resp && !resp.blocked && hits.length === 0 && (
-            <p className="text-sm text-ink-muted">No matches. Attach media in Chat (📎) or rephrase.</p>
+            <p className="text-sm text-ink-muted">No matches. Attach media in Chat or rephrase.</p>
           )}
           {hits.map((h, i) => (
             <ResultCard key={h.point_id} hit={h} index={i} active={i === selected}

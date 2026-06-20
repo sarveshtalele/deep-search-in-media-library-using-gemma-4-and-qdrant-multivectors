@@ -171,21 +171,21 @@ cannot share it (use server mode for concurrency). Payload indexes are a no-op i
 ## 6. Gap analysis — original proposal vs. this implementation
 
 The tech stack was fixed; only the **solution design** was corrected where the original would
-not work reliably. ✅ = as specified · ➕ = delivered with a corrected mechanism.
+not work reliably. Met = as specified · Adapted = delivered with a corrected mechanism.
 
 | # | Original claim | Correction |
 |---|----------------|------------|
-| 1 | "Gemma 4 E2B/E4B/31B" exposes per-modality embedding endpoints | ➕ Gemma 4 ships on Ollama and is multimodal, but it is **generative**, not a contrastive embedder. Used for description/intent/rerank/RAG, not as the metric space. E2B/E4B are *effective*-parameter variants; default `gemma4:e4b`. |
-| 2 | Compare a **text** query vector against raw `video_frames`/`audio_chunks` vectors | ➕ Misaligned spaces → noise. **Describe-then-embed** unifies all modalities in one text space (§5.1). |
-| 3 | Gemma emits retrieval embeddings directly | ➕ Dedicated `nomic-embed-text` owns the space; vectors L2-normalized for cosine. |
-| 4 | "Weighted combination of vector spaces" in one Qdrant call | ➕ No such knob; **client-side fusion** (RRF/weighted), manual weights force weighted (§5.4). |
-| 5 | Asset multivector **and** second-accurate retrieval | ➕ Both built: fragment points for the exact second + MaxSim multivectors for asset recall (§5.2–5.3). |
-| 6 | "Gemma cross-encoder reranking" | ➕ **LLM-as-reranker**, listwise (§5.5). |
-| 7 | GGUF (llama.cpp) **and** PyTorch+MPS | ➕ One runtime: **Ollama** + deterministic stub (§5.6). |
-| 8 | "Eliminate ASR" via direct audio→vector | ✅ No separate Whisper/OCR — Gemma 4 audio transcribes+characterizes in one call, then text is embedded. |
-| 9 | Quantization named, recall impact ignored | ✅ Scalar default; PQ opt-in with rescoring caveat. |
-| 10 | "Native safety prompt structures" (vague) | ✅ Concrete pre-retrieval filter + generated-metadata sanitizer. |
-| 11 | No evaluation harness | ✅ `pytest` suite (fusion, intent, safety, ingest→search e2e, re-ingest dedup, MaxSim/image) runnable on the stub. |
+| 1 | "Gemma 4 E2B/E4B/31B" exposes per-modality embedding endpoints | Adapted Gemma 4 ships on Ollama and is multimodal, but it is **generative**, not a contrastive embedder. Used for description/intent/rerank/RAG, not as the metric space. E2B/E4B are *effective*-parameter variants; default `gemma4:e4b`. |
+| 2 | Compare a **text** query vector against raw `video_frames`/`audio_chunks` vectors | Adapted Misaligned spaces → noise. **Describe-then-embed** unifies all modalities in one text space (§5.1). |
+| 3 | Gemma emits retrieval embeddings directly | Adapted Dedicated `nomic-embed-text` owns the space; vectors L2-normalized for cosine. |
+| 4 | "Weighted combination of vector spaces" in one Qdrant call | Adapted No such knob; **client-side fusion** (RRF/weighted), manual weights force weighted (§5.4). |
+| 5 | Asset multivector **and** second-accurate retrieval | Adapted Both built: fragment points for the exact second + MaxSim multivectors for asset recall (§5.2–5.3). |
+| 6 | "Gemma cross-encoder reranking" | Adapted **LLM-as-reranker**, listwise (§5.5). |
+| 7 | GGUF (llama.cpp) **and** PyTorch+MPS | Adapted One runtime: **Ollama** + deterministic stub (§5.6). |
+| 8 | "Eliminate ASR" via direct audio→vector | Met No separate Whisper/OCR — Gemma 4 audio transcribes+characterizes in one call, then text is embedded. |
+| 9 | Quantization named, recall impact ignored | Met Scalar default; PQ opt-in with rescoring caveat. |
+| 10 | "Native safety prompt structures" (vague) | Met Concrete pre-retrieval filter + generated-metadata sanitizer. |
+| 11 | No evaluation harness | Met `pytest` suite (fusion, intent, safety, ingest→search e2e, re-ingest dedup, MaxSim/image) runnable on the stub. |
 
 ---
 
@@ -193,28 +193,28 @@ not work reliably. ✅ = as specified · ➕ = delivered with a corrected mechan
 
 | Requirement | Status | Where |
 |-------------|--------|-------|
-| Ingest video / audio / image / text | ✅ | `ingestion/pipeline.py` |
-| Unified cross-modal NL search | ✅ | `query/search.py` |
-| Scene-boundary keyframe detection | ✅ | `ingestion/video.py` (PySceneDetect) |
-| 30s audio chunks, 5s overlap, mono/16k, noise reduction | ✅ | `ingestion/audio.py` (`afftdn`) |
-| Titles/tags/descriptions, SRT/VTT captions | ✅ | `ingestion/text.py` |
-| Gemma 4 vision on keyframes | ➕ | `gemma.describe_image` (describe-then-embed) |
-| Gemma 4 audio, no mandatory ASR | ✅ | `gemma.describe_audio` |
-| Visual / audio / textual vectors | ✅ | three named spaces |
-| Single collection, named vectors | ✅ | `store.ensure_collection` |
-| Multivector arrays per asset, MaxSim | ✅ | `store.upsert_asset_multivectors`, `search_maxsim` |
-| Payload: paths, timestamps, durations, categories | ✅ | `schema.Fragment.payload` |
-| Payload indexes (keyword/int) for pre-filter | ✅ | `asset_id/modality/category`, `ingested_at` |
-| Intent analysis (visual/spoken/conceptual) | ✅ | `query/intent.py` |
-| Weighted combination of spaces | ➕ | `query/fusion.py` (weighted forced on override) |
-| Qdrant fusion / external RRF | ✅ | `fusion.rrf_fuse` (default) |
-| Gemma reranking of top-N | ➕ | `query/rerank.py` (LLM-as-reranker) |
-| Timestamp-level retrieval (payload offsets) | ✅ | fragment `start_s`; `st.video(start_time=…)` |
-| Temporal RAG follow-ups | ✅ | `rag/chat.py` (time-ordered timeline) |
-| Scalar/Product quantization | ✅ | `store._quantization` |
-| Batched ingestion | ✅ | `pipeline._embed_and_upsert` |
-| Content safety on queries + generated metadata | ✅ | `safety.check_query`, `safety.sanitize_generated` |
-| No binaries in payload | ✅ | paths + offsets only |
+| Ingest video / audio / image / text | Met | `ingestion/pipeline.py` |
+| Unified cross-modal NL search | Met | `query/search.py` |
+| Scene-boundary keyframe detection | Met | `ingestion/video.py` (PySceneDetect) |
+| 30s audio chunks, 5s overlap, mono/16k, noise reduction | Met | `ingestion/audio.py` (`afftdn`) |
+| Titles/tags/descriptions, SRT/VTT captions | Met | `ingestion/text.py` |
+| Gemma 4 vision on keyframes | Adapted | `gemma.describe_image` (describe-then-embed) |
+| Gemma 4 audio, no mandatory ASR | Met | `gemma.describe_audio` |
+| Visual / audio / textual vectors | Met | three named spaces |
+| Single collection, named vectors | Met | `store.ensure_collection` |
+| Multivector arrays per asset, MaxSim | Met | `store.upsert_asset_multivectors`, `search_maxsim` |
+| Payload: paths, timestamps, durations, categories | Met | `schema.Fragment.payload` |
+| Payload indexes (keyword/int) for pre-filter | Met | `asset_id/modality/category`, `ingested_at` |
+| Intent analysis (visual/spoken/conceptual) | Met | `query/intent.py` |
+| Weighted combination of spaces | Adapted | `query/fusion.py` (weighted forced on override) |
+| Qdrant fusion / external RRF | Met | `fusion.rrf_fuse` (default) |
+| Gemma reranking of top-N | Adapted | `query/rerank.py` (LLM-as-reranker) |
+| Timestamp-level retrieval (payload offsets) | Met | fragment `start_s`; `st.video(start_time=…)` |
+| Temporal RAG follow-ups | Met | `rag/chat.py` (time-ordered timeline) |
+| Scalar/Product quantization | Met | `store._quantization` |
+| Batched ingestion | Met | `pipeline._embed_and_upsert` |
+| Content safety on queries + generated metadata | Met | `safety.check_query`, `safety.sanitize_generated` |
+| No binaries in payload | Met | paths + offsets only |
 
 ---
 

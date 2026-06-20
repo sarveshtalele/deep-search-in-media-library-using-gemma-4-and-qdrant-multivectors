@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Asset, Stats } from "@/lib/api";
+import { IconAudio, IconLibrary, IconRefresh, IconTrash } from "./icons";
 
 const VIDEO = [".mp4", ".mov", ".mkv", ".webm", ".m4v"];
 const AUDIO = [".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"];
@@ -20,8 +21,10 @@ export function Library({
     <div className="space-y-5">
       <div className="glass-strong p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">📚 Library</h2>
-          <button className="btn-ghost px-3 py-1 text-xs" onClick={onRefresh}>↻ Refresh</button>
+          <h2 className="flex items-center gap-2 text-lg font-bold"><IconLibrary size={18} /> Library</h2>
+          <button className="btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onClick={onRefresh}>
+            <IconRefresh size={13} /> Refresh
+          </button>
         </div>
         {stats && (
           <>
@@ -47,7 +50,7 @@ export function Library({
 
       {assets.length === 0 ? (
         <div className="glass p-8 text-center text-sm text-ink-muted">
-          No media yet. Go to <b className="text-clay-600">Chat</b> and attach a file with 📎.
+          No media yet. Go to <b className="text-clay-600">Chat</b> and attach a file.
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -57,14 +60,14 @@ export function Library({
               <div key={a.asset_id} className="glass overflow-hidden p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-semibold text-ink">{a.asset_name}</span>
-                  {a.has_audio && <span title="has audio">🎧</span>}
+                  {a.has_audio && <IconAudio size={14} className="flex-none text-ink-muted" />}
                   {confirm === a.asset_id ? (
                     <span className="flex gap-1 text-xs">
                       <button className="font-bold text-clay" onClick={() => { onDelete(a.asset_id); setConfirm(null); }}>Delete</button>
                       <button className="text-ink-muted" onClick={() => setConfirm(null)}>Cancel</button>
                     </span>
                   ) : (
-                    <button className="text-ink-muted hover:text-clay" title="Delete" onClick={() => setConfirm(a.asset_id)}>🗑</button>
+                    <button className="text-ink-muted hover:text-clay" title="Delete" onClick={() => setConfirm(a.asset_id)}><IconTrash size={15} /></button>
                   )}
                 </div>
                 {VIDEO.includes(e) ? (
